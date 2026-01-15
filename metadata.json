@@ -1,0 +1,8 @@
+{
+  "name": "AdolatAi 2.0 - Digital Lawyer",
+  "description": "An AI-powered platform for lawyers in Uzbekistan. Features a futuristic mobile voice assistant and a professional desktop dashboard.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}
