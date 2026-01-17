@@ -33,6 +33,14 @@ export const DocumentScanner: React.FC<DocumentScannerProps> = ({ t, onSave }) =
     ]);
     const [activePoint, setActivePoint] = useState<number | null>(null);
     
+    // Zoom states
+    const [zoom, setZoom] = useState(1);
+    const [minZoom, setMinZoom] = useState(1);
+    const [maxZoom, setMaxZoom] = useState(3);
+    const [zoomSupported, setZoomSupported] = useState(false);
+    const [pinchStartDist, setPinchStartDist] = useState<number | null>(null);
+    const [startZoom, setStartZoom] = useState(1);
+    
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
@@ -60,10 +68,29 @@ export const DocumentScanner: React.FC<DocumentScannerProps> = ({ t, onSave }) =
         setTimeout(async () => {
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment', width: { ideal: 3840 }, height: { ideal: 2160 } } 
+                    video: { 
+                        facingMode: 'environment', 
+                        width: { ideal: 3840 }, 
+                        height: { ideal: 2160 },
+                        zoom: true 
+                    } as any
                 });
                 streamRef.current = stream;
                 if (videoRef.current) videoRef.current.srcObject = stream;
+
+                // Check for zoom capabilities
+                const track = stream.getVideoTracks()[0];
+                const capabilities = track.getCapabilities() as any;
+                
+                if (capabilities.zoom) {
+                    setZoomSupported(true);
+                    setMinZoom(capabilities.zoom.min);
+                    setMaxZoom(capabilities.zoom.max);
+                    setZoom(capabilities.zoom.min); // Start at min zoom
+                } else {
+                    console.log("Zoom not supported by hardware");
+                    setZoomSupported(false);
+                }
             } catch (err) {
                 console.error("Camera error", err);
                 setMode('idle');
@@ -76,6 +103,61 @@ export const DocumentScanner: React.FC<DocumentScannerProps> = ({ t, onSave }) =
             streamRef.current.getTracks().forEach(track => track.stop());
             streamRef.current = null;
         }
+        setZoom(1);
+        setZoomSupported(false);
+    };
+
+    const handleZoom = (newZoom: number) => {
+        if (!streamRef.current || !zoomSupported) return;
+        
+        const track = streamRef.current.getVideoTracks()[0];
+        const clampedZoom = Math.min(Math.max(newZoom, minZoom), maxZoom);
+        
+        setZoom(clampedZoom);
+        
+        try {
+            track.applyConstraints({
+                advanced: [{ zoom: clampedZoom } as any]
+            });
+        } catch (e) {
+            console.error("Failed to apply zoom", e);
+        }
+    };
+    
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (mode === 'camera' && e.touches.length === 2 && zoomSupported) {
+            const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            setPinchStartDist(dist);
+            setStartZoom(zoom);
+        } else if (mode === 'crop' && cropPoints) {
+            // Existing crop logic would be here if needed explicitly, 
+            // but the point move handler is separate.
+        }
+    };
+
+    const handleTouchMove = (e: React.TouchEvent) => {
+        if (mode === 'camera' && e.touches.length === 2 && zoomSupported && pinchStartDist !== null) {
+            const dist = Math.hypot(
+                e.touches[0].clientX - e.touches[1].clientX,
+                e.touches[0].clientY - e.touches[1].clientY
+            );
+            
+            // Calculate zoom ratio
+            const ratio = dist / pinchStartDist;
+            const range = maxZoom - minZoom;
+            
+            // Adjust sensitivity: multiply ratio effect if needed
+            // Simple approach: newZoom = startZoom * ratio
+            const newZoom = startZoom * ratio;
+            handleZoom(newZoom);
+        }
+    };
+
+    const handleTouchEnd = () => {
+        setPinchStartDist(null);
     };
 
     const takePhoto = () => {
@@ -208,7 +290,12 @@ export const DocumentScanner: React.FC<DocumentScannerProps> = ({ t, onSave }) =
             )}
 
             {mode === 'camera' && (
-                <div className="relative flex-1 bg-black overflow-hidden flex flex-col">
+                <div 
+                    className="relative flex-1 bg-black overflow-hidden flex flex-col"
+                    onTouchStart={handleTouchStart}
+                    onTouchMove={handleTouchMove}
+                    onTouchEnd={handleTouchEnd}
+                >
                     <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
                     <div className="absolute inset-0 flex items-center justify-center pointer-events-none p-10">
                         <div className="w-full h-full border-2 border-dashed border-white/20 rounded-3xl relative">
@@ -218,6 +305,24 @@ export const DocumentScanner: React.FC<DocumentScannerProps> = ({ t, onSave }) =
                     <div className="absolute top-10 left-0 w-full flex justify-center z-20">
                          <div className="px-4 py-1.5 bg-indigo-600 rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl">Саҳифа #{currentSessionPages.length + 1}</div>
                     </div>
+
+                    {/* Zoom Slider */}
+                    {zoomSupported && (
+                        <div className="absolute bottom-32 left-0 w-full px-10 flex items-center justify-center gap-4 z-30">
+                            <span className="text-xs font-bold text-white bg-black/50 px-2 py-1 rounded">1x</span>
+                            <input 
+                                type="range" 
+                                min={minZoom} 
+                                max={maxZoom} 
+                                step="0.1" 
+                                value={zoom} 
+                                onChange={(e) => handleZoom(parseFloat(e.target.value))}
+                                className="w-full h-1 bg-white/30 rounded-lg appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-lg"
+                            />
+                            <span className="text-xs font-bold text-white bg-black/50 px-2 py-1 rounded">{maxZoom.toFixed(1)}x</span>
+                        </div>
+                    )}
+                    
                     <div className="absolute bottom-10 left-0 w-full flex items-center justify-around z-20">
                         <button onClick={() => setMode(currentSessionPages.length > 0 ? 'review' : 'idle')} className="p-4 bg-slate-900/60 backdrop-blur-xl rounded-full text-white border border-white/10"><XMarkIcon className="h-6 w-6" /></button>
                         
