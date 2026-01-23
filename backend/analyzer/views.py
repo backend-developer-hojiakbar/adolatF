@@ -62,6 +62,7 @@ class PDFAnalyzeView(APIView):
                 model_name = 'gemini-2.0-flash-exp'
                 model = genai.GenerativeModel(model_name)
 
+                chunk_errors = []
                 for i in range(0, total_pages, CHUNK_SIZE):
                     chunk_start = i
                     chunk_end = min(i + CHUNK_SIZE, total_pages)
@@ -92,7 +93,9 @@ class PDFAnalyzeView(APIView):
                             retry_count += 1
                         
                         if uploaded_chunk.state.name != "ACTIVE":
-                             print(f"WARNING: Chunk {i} failed processing. Skipping.")
+                             msg = f"Chunk {i} failed processing. State: {uploaded_chunk.state.name}"
+                             print(f"WARNING: {msg}")
+                             chunk_errors.append(msg)
                              continue
 
                         # Analyze Chunk
@@ -110,7 +113,9 @@ class PDFAnalyzeView(APIView):
                             intermediate_summaries.append(f"--- QISM {chunk_start+1}-{chunk_end} ---\n{response.text}")
                             
                     except Exception as e:
-                        print(f"ERROR analyzing chunk {i}: {e}")
+                        msg = f"ERROR analyzing chunk {i}: {str(e)}"
+                        print(msg)
+                        chunk_errors.append(msg)
                         # Don't stop the whole process, try next chunk
                     finally:
                         # Cleanup remote
@@ -124,7 +129,8 @@ class PDFAnalyzeView(APIView):
 
                 # FINAL AGGREGATION
                 if not intermediate_summaries:
-                    raise ValueError("Hech qanday qism tahlil qilinmadi. Fayl formati Gemini uchun tushunarsiz bo'lishi mumkin.")
+                    error_details = "; ".join(chunk_errors)
+                    raise ValueError(f"Hech qanday qism tahlil qilinmadi. Tafsilotlar: {error_details}")
 
                 final_aggregation_prompt = """
                 Quyida katta yuridik ishning qismlarga bo'lib qilingan tahlillari keltirilgan.
