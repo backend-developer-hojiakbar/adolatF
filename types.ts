@@ -20,36 +20,36 @@ export interface KnowledgeBaseEntry {
 }
 
 export interface KnowledgeBaseSection {
-    keyFacts: { fact: string; relevance: string; }[];
-    legalIssues: string[];
-    applicableLaws: { article: string; summary: string; url?: string; }[];
-    strengths: string[];
-    weaknesses: string[];
-    statuteOfLimitations: {
-        status: 'OK' | 'Muddati o\'tgan' | 'Xavf ostida';
-        summary: string;
-    };
+  keyFacts: { fact: string; relevance: string; }[];
+  legalIssues: string[];
+  applicableLaws: { article: string; summary: string; url?: string; }[];
+  strengths: string[];
+  weaknesses: string[];
+  statuteOfLimitations: {
+    status: 'OK' | 'Muddati o\'tgan' | 'Xavf ostida';
+    summary: string;
+  };
 }
 
 export interface CrossExaminationQuestion {
-    question: string;
-    suggestedAnswer: string;
+  question: string;
+  suggestedAnswer: string;
 }
 
 export interface RiskMatrixEntry {
-    risk: string;
-    likelihood: 'Past' | 'O\'rta' | 'Yuqori';
-    mitigation: string;
+  risk: string;
+  likelihood: 'Past' | 'O\'rta' | 'Yuqori';
+  mitigation: string;
 }
 
 export interface WitnessQuestionSet {
-    direct: string[];
-    cross: { question: string; strategy: string; }[];
+  direct: string[];
+  cross: { question: string; strategy: string; }[];
 }
 
 export interface WitnessPrep {
-    participantName: string;
-    questions: WitnessQuestionSet;
+  participantName: string;
+  questions: WitnessQuestionSet;
 }
 
 export interface DebateResult {
@@ -82,12 +82,13 @@ export interface AiLawyerPersona {
 }
 
 export interface CaseFile {
-  id: string; 
+  id: string;
   name: string;
   type: string;
-  content?: string; 
-  extractedText?: string; 
-  documentType?: string; 
+  content?: string;
+  extractedText?: string;
+  documentType?: string;
+  file?: File; // Store original file for backend upload
 }
 
 export interface Task {
@@ -103,35 +104,35 @@ export interface TimelineEvent {
 }
 
 export interface CaseParticipant {
-    name: string;
-    role: string;
+  name: string;
+  role: string;
 }
 
 export interface EvidenceItem {
-    id: string;
-    fileId: string; 
-    name: string;
-    type: string;
-    aiSummary?: string;
-    timestamp: string;
+  id: string;
+  fileId: string;
+  name: string;
+  type: string;
+  aiSummary?: string;
+  timestamp: string;
 }
 
 export interface BillingEntry {
-    id: string;
-    date: string;
-    hours: number;
-    description: string;
-    rate: number;
+  id: string;
+  date: string;
+  hours: number;
+  description: string;
+  rate: number;
 }
 
 export interface Note {
-    id: string;
-    content: string;
-    timestamp: string;
+  id: string;
+  content: string;
+  timestamp: string;
 }
 
 export interface Case {
-  id:string;
+  id: string;
   title: string;
   caseDetails: string;
   files: CaseFile[];
@@ -162,35 +163,35 @@ export interface ChatMessage {
 export type View = 'dashboard' | 'analyze' | 'debate' | 'summary' | 'history' | 'research' | 'settings' | 'knowledge_base' | 'simulation' | 'tasks' | 'documents' | 'timeline' | 'evidence' | 'billing' | 'notes' | 'calendar' | 'overview' | 'witness_prep';
 
 export interface PreliminaryVerdict {
-    winProbability: number;
-    probabilityJustification: string;
-    positiveFactors: string[];
-    negativeFactors: string[];
+  winProbability: number;
+  probabilityJustification: string;
+  positiveFactors: string[];
+  negativeFactors: string[];
 }
 
 export interface PendingCaseData {
-    caseDetails: string;
-    files: CaseFile[];
-    courtType: string;
-    courtStage: string;
-    participants: CaseParticipant[];
-    clientRole: string;
-    clientName: string;
+  caseDetails: string;
+  files: CaseFile[];
+  courtType: string;
+  courtStage: string;
+  participants: CaseParticipant[];
+  clientRole: string;
+  clientName: string;
 }
 
 export interface SuggestedParticipant {
-    name: string;
-    suggestedRole: string;
-    usage?: UsageInfo;
+  name: string;
+  suggestedRole: string;
+  usage?: UsageInfo;
 }
 
 export interface FeedbackData {
-    caseId: string;
-    view: View;
-    rating: number; 
-    tags: string[];
-    comment: string;
-    timestamp: string;
+  caseId: string;
+  view: View;
+  rating: number;
+  tags: string[];
+  comment: string;
+  timestamp: string;
 }
 
 export type Tab = 'analyze' | 'debate' | 'summary' | 'history';

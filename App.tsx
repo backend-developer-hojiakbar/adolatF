@@ -32,33 +32,35 @@ import { CalendarView } from './components/CalendarView';
 import { MobileLayout } from './components/mobile/MobileLayout';
 
 // Services
-import { 
-    getLegalStrategy, 
+import {
+    getLegalStrategy,
     getCaseParticipants,
     getDeepDiveAnalysis,
     generateSimulationData
 } from './services/geminiService';
+import { api } from './services/api';
 
 import { DashboardIcon } from './components/icons';
+import { RegisterView } from './components/auth/RegisterView';
 
 const App: React.FC = () => {
     const [language, setLanguage] = useState(() => localStorage.getItem('language') || 'uz-cyr');
     const [theme, setTheme] = useState<'light' | 'dark'>(() => (localStorage.getItem('theme') as 'light' | 'dark') || 'dark');
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-    
-    // Persist balance in localStorage
-    const [userBalance, setUserBalance] = useState(() => {
-        const saved = localStorage.getItem('adolat_user_balance');
-        return saved ? parseFloat(saved) : 1500000;
-    });
+    // Auth Mode: 'login' or 'register'
+    const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
-    useEffect(() => {
-        localStorage.setItem('adolat_user_balance', userBalance.toString());
-    }, [userBalance]);
+    const [userBalance, setUserBalance] = useState(0);
 
-    const deductTokens = (usage: UsageInfo | undefined) => {
+    const deductTokens = async (usage: UsageInfo | undefined) => {
         if (usage && usage.cost > 0) {
-            setUserBalance(prev => Math.max(0, prev - usage.cost));
+            const cost = usage.cost;
+            setUserBalance(prev => {
+                const newBal = Math.max(0, prev - cost);
+                // Sync with backend (in real app, this should be a transaction endpoint)
+                api.updateProfile({ balance: newBal }).catch(e => console.error("Balance sync failed", e));
+                return newBal;
+            });
         }
     };
 
@@ -93,13 +95,41 @@ const App: React.FC = () => {
     const [isSimulationLoading, setIsSimulationLoading] = useState(false);
     const [pendingCaseData, setPendingCaseData] = useState<PendingCaseData | null>(null);
     const [showFeedbackModal, setShowFeedbackModal] = useState(false);
-    
+
+    // Initial Data Fetch
+    useEffect(() => {
+        if (authToken) {
+            Promise.all([
+                api.getProfile(),
+                api.getCases()
+            ]).then(([profile, cases]) => {
+                setUserBalance(parseFloat(profile.balance));
+
+                // Map Backend (snake_case) to Frontend (camelCase)
+                const mappedCases = cases.map((c: any) => ({
+                    ...c,
+                    caseDetails: c.case_details,
+                    courtType: c.court_type,
+                    courtStage: c.court_stage,
+                    clientName: c.client_name,
+                    clientRole: c.client_role,
+                    // Ensure JSON fields are parsed if backend sends strings (Django DRF usually sends objects for JSONField)
+                    // created_at -> timestamp logic if needed
+                    timestamp: c.created_at || c.timestamp
+                }));
+                // setHistory(mappedCases);
+                setHistory(mappedCases);
+            }).catch(err => console.error("Failed to load initial data", err));
+        }
+    }, [authToken]);
+
     const [deviceList, setDeviceList] = useState<string[]>(['AD-2025', 'MAC-BOOK-PRO', 'IPHONE-15-PRO']);
     const handleRemoveDevice = (id: string) => setDeviceList(prev => prev.filter(d => d !== id));
 
-    useEffect(() => {
-        localStorage.setItem('caseHistory', JSON.stringify(history));
-    }, [history]);
+    // History is now managed via API useEffect
+    // useEffect(() => {
+    //     localStorage.setItem('caseHistory', JSON.stringify(history));
+    // }, [history]);
 
     const handleLogin = (token: string) => {
         localStorage.setItem('authToken', token);
@@ -116,14 +146,14 @@ const App: React.FC = () => {
         try {
             const { participants, usage } = await getCaseParticipants(caseDetails, files, t, language);
             deductTokens(usage);
-            setPendingCaseData({ 
-                caseDetails, 
-                files, 
-                courtType, 
-                courtStage, 
-                participants: participants.map(p => ({ name: p.name, role: p.suggestedRole })), 
-                clientRole: '', 
-                clientName: '' 
+            setPendingCaseData({
+                caseDetails,
+                files,
+                courtType,
+                courtStage,
+                participants: participants.map(p => ({ name: p.name, role: p.suggestedRole })),
+                clientRole: '',
+                clientName: ''
             });
         } catch (error: any) {
             alert(t(error.message));
@@ -132,7 +162,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleConfirmParticipantsAndAnalyze = async (participants: CaseParticipant[], client: {name: string, role: string}) => {
+    const handleConfirmParticipantsAndAnalyze = async (participants: CaseParticipant[], client: { name: string, role: string }) => {
         if (!pendingCaseData) return;
         setIsLoading(true);
         try {
@@ -142,7 +172,10 @@ const App: React.FC = () => {
                 id: `case-${Date.now()}`,
                 title: `${client.name} иши`,
                 caseDetails: pendingCaseData.caseDetails,
-                files: pendingCaseData.files.map(({content, ...rest}) => rest),
+                files: pendingCaseData.files.map(({ content, file, ...rest }) => rest), // Don't save large base64 or file obj if not needed, but backend needs it? API saves what we send.
+                // Ideally we upload files separately and link them. For now, sending what we have.
+                // Note: Django JSONField might complain about binary data in 'files'.
+                // Ideally 'files' in Case model should be just metadata or links.
                 result,
                 courtStage: pendingCaseData.courtStage,
                 clientRole: client.role,
@@ -151,8 +184,49 @@ const App: React.FC = () => {
                 tasks: result.suggestedTasks.map((text, i) => ({ id: `task-${Date.now()}-${i}`, text, completed: false })),
                 timeline: [], evidence: [], billing: [], notes: [], tags: [pendingCaseData.courtType, pendingCaseData.courtStage], folder: null, timestamp: new Date().toISOString()
             };
-            setHistory(prev => [newCase, ...prev]);
-            setCurrentCase(newCase);
+
+            // Save to Backend
+            try {
+                // Map Frontend (camelCase) to Backend (snake_case)
+                const backendCase = {
+                    title: newCase.title,
+                    case_details: newCase.caseDetails,
+                    court_type: pendingCaseData.courtType,
+                    court_stage: pendingCaseData.courtStage,
+                    client_name: client.name,
+                    client_role: client.role,
+                    participants: participants,
+                    result: result,
+                    tasks: newCase.tasks,
+                    timeline: newCase.timeline || [],
+                    evidence: newCase.evidence || [],
+                    billing: newCase.billing || [],
+                    notes: newCase.notes || [],
+                    tags: newCase.tags || [],
+                    folder: newCase.folder || ""
+                };
+
+                await api.saveCase(backendCase);
+                // Reload cases to get the one with server ID and correct timestamp
+                const updatedBackendCases = await api.getCases();
+                const mappedCases = updatedBackendCases.map((c: any) => ({
+                    ...c,
+                    caseDetails: c.case_details,
+                    courtType: c.court_type,
+                    courtStage: c.court_stage,
+                    clientName: c.client_name,
+                    clientRole: c.client_role,
+                    timestamp: c.created_at || c.timestamp
+                }));
+                setHistory(mappedCases);
+                setCurrentCase(mappedCases[0]);
+            } catch (e) {
+                console.error("Failed to save case to backend", e);
+                // Fallback to local
+                setHistory(prev => [newCase, ...prev]);
+                setCurrentCase(newCase);
+            }
+
             setActiveCaseView('knowledge_base');
             setPendingCaseData(null);
         } catch (error: any) {
@@ -176,7 +250,7 @@ const App: React.FC = () => {
                 language
             );
             deductTokens(usage);
-            
+
             // Update the case with deep dive analysis
             const updatedCase = {
                 ...currentCase,
@@ -185,7 +259,7 @@ const App: React.FC = () => {
                     deepDiveAnalysis: analysis
                 }
             };
-            
+
             setCurrentCase(updatedCase);
             setHistory(prev => prev.map(c => c.id === currentCase.id ? updatedCase : c));
         } catch (error: any) {
@@ -210,7 +284,7 @@ const App: React.FC = () => {
                 language
             );
             deductTokens(usage);
-            
+
             // Update the case with simulation data
             const updatedCase = {
                 ...currentCase,
@@ -222,7 +296,7 @@ const App: React.FC = () => {
                     closingArgumentDefender
                 }
             };
-            
+
             setCurrentCase(updatedCase);
             setHistory(prev => prev.map(c => c.id === currentCase.id ? updatedCase : c));
         } catch (error: any) {
@@ -233,7 +307,28 @@ const App: React.FC = () => {
         }
     };
 
-    if (!authToken) return <PricingView onLogin={handleLogin} t={t} loginError={null} />;
+    if (!authToken) {
+        if (authMode === 'register') {
+            return (
+                <RegisterView
+                    onLoginClick={() => setAuthMode('login')}
+                    onRegisterSuccess={(token) => {
+                        handleLogin(token);
+                        setAuthMode('login');
+                    }}
+                    t={t}
+                />
+            );
+        }
+        return (
+            <PricingView
+                onLogin={handleLogin}
+                onRegisterClick={() => setAuthMode('register')}
+                t={t}
+                loginError={null}
+            />
+        );
+    }
 
 
     if (isMobile) {
@@ -242,27 +337,27 @@ const App: React.FC = () => {
 
     const renderActiveView = () => {
         const viewToRender = currentCase ? activeCaseView : activeView;
-        
+
         switch (viewToRender) {
             case 'dashboard': return <DashboardView onStartAnalysis={() => setActiveView('analyze')} cases={history} onNavigate={setActiveView} onSelectCase={(c) => { setCurrentCase(c); setActiveCaseView('knowledge_base'); }} t={t} language={language} />;
             case 'analyze': return <CaseInputForm onAnalyze={handleAnalyze} isLoading={isLoading} t={t} language={language} onDeductTokens={deductTokens} />;
-            case 'history': return <HistoryView history={history} onSelect={(c) => { setCurrentCase(c); setActiveCaseView('knowledge_base'); }} onDelete={(id) => setHistory(prev => prev.filter(c => c.id !== id))} onSetFolder={() => {}} t={t} language={language} />;
-            case 'research': return <ResearchView initialQuery={null} onQueryHandled={() => {}} t={t} language={language} onDeductTokens={deductTokens} />;
+            case 'history': return <HistoryView history={history} onSelect={(c) => { setCurrentCase(c); setActiveCaseView('knowledge_base'); }} onDelete={(id) => setHistory(prev => prev.filter(c => c.id !== id))} onSetFolder={() => { }} t={t} language={language} />;
+            case 'research': return <ResearchView initialQuery={null} onQueryHandled={() => { }} t={t} language={language} onDeductTokens={deductTokens} />;
             case 'calendar': return <CalendarView t={t} />;
             case 'settings': return <SettingsView t={t} deviceId="AD-2025" deviceList={deviceList} onRemoveDevice={handleRemoveDevice} />;
-            
-            case 'knowledge_base': return <KnowledgeBaseView caseData={currentCase} onNewAnalysis={() => { setCurrentCase(null); setActiveView('analyze'); }} onUpdateCase={() => {}} isUpdating={false} onGetDeepDive={handleGetDeepDive} isDeepDiveLoading={isDeepDiveLoading} onArticleSelect={(art) => { setActiveView('research'); }} onOpenFeedback={() => setShowFeedbackModal(true)} t={t} language={language} onDeductTokens={deductTokens} />;
-            case 'tasks': return <TasksView tasks={currentCase?.tasks || []} onUpdateTasks={(nt) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? {...c, tasks: nt} : c))} t={t} language={language} />;
-            case 'documents': return <DocumentGeneratorView caseData={currentCase} onNewAnalysis={() => {}} t={t} language={language} onDeductTokens={deductTokens} />;
-            case 'debate': return <AiDebateView caseData={currentCase} onNewAnalysis={() => {}} onRate={() => {}} t={t} language={language} />;
-            case 'simulation': return <SimulationView caseData={currentCase} onNewAnalysis={() => {}} isLoading={isSimulationLoading} onGenerateSimulation={handleGenerateSimulation} onOpenFeedback={() => {}} t={t} />;
-            case 'summary': return <SummaryView caseData={currentCase} onNewAnalysis={() => {}} onOpenFeedback={() => {}} onUpdateCase={(u) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? u : c))} t={t} language={language} onDeductTokens={deductTokens} />;
-            case 'timeline': return <TimelineView caseData={currentCase} onUpdateTimeline={(nt) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? {...c, timeline: nt} : c))} t={t} language={language} onDeductTokens={deductTokens} />;
-            case 'evidence': return <EvidenceView caseData={currentCase} onUpdateEvidence={() => {}} t={t} />;
-            case 'billing': return <BillingView caseData={currentCase} onUpdateBilling={(nb) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? {...c, billing: nb} : c))} t={t} />;
-            case 'notes': return <NotesView caseData={currentCase} onUpdateNotes={(nn) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? {...c, notes: nn} : c))} t={t} language={language} />;
-            
-            default: return <DashboardView onStartAnalysis={() => setActiveView('analyze')} cases={history} onNavigate={setActiveView} onSelectCase={(c) => { setCurrentCase(c); setActiveCaseView('knowledge_base'); }} t={t} language={language}/>;
+
+            case 'knowledge_base': return <KnowledgeBaseView caseData={currentCase} onNewAnalysis={() => { setCurrentCase(null); setActiveView('analyze'); }} onUpdateCase={() => { }} isUpdating={false} onGetDeepDive={handleGetDeepDive} isDeepDiveLoading={isDeepDiveLoading} onArticleSelect={(art) => { setActiveView('research'); }} onOpenFeedback={() => setShowFeedbackModal(true)} t={t} language={language} onDeductTokens={deductTokens} />;
+            case 'tasks': return <TasksView tasks={currentCase?.tasks || []} onUpdateTasks={(nt) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? { ...c, tasks: nt } : c))} t={t} language={language} />;
+            case 'documents': return <DocumentGeneratorView caseData={currentCase} onNewAnalysis={() => { }} t={t} language={language} onDeductTokens={deductTokens} />;
+            case 'debate': return <AiDebateView caseData={currentCase} onNewAnalysis={() => { }} onRate={() => { }} t={t} language={language} />;
+            case 'simulation': return <SimulationView caseData={currentCase} onNewAnalysis={() => { }} isLoading={isSimulationLoading} onGenerateSimulation={handleGenerateSimulation} onOpenFeedback={() => { }} t={t} />;
+            case 'summary': return <SummaryView caseData={currentCase} onNewAnalysis={() => { }} onOpenFeedback={() => { }} onUpdateCase={(u) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? u : c))} t={t} language={language} onDeductTokens={deductTokens} />;
+            case 'timeline': return <TimelineView caseData={currentCase} onUpdateTimeline={(nt) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? { ...c, timeline: nt } : c))} t={t} language={language} onDeductTokens={deductTokens} />;
+            case 'evidence': return <EvidenceView caseData={currentCase} onUpdateEvidence={() => { }} t={t} />;
+            case 'billing': return <BillingView caseData={currentCase} onUpdateBilling={(nb) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? { ...c, billing: nb } : c))} t={t} />;
+            case 'notes': return <NotesView caseData={currentCase} onUpdateNotes={(nn) => currentCase && setHistory(prev => prev.map(c => c.id === currentCase.id ? { ...c, notes: nn } : c))} t={t} language={language} />;
+
+            default: return <DashboardView onStartAnalysis={() => setActiveView('analyze')} cases={history} onNavigate={setActiveView} onSelectCase={(c) => { setCurrentCase(c); setActiveCaseView('knowledge_base'); }} t={t} language={language} />;
         }
     };
 
@@ -278,32 +373,32 @@ const App: React.FC = () => {
                     t={t}
                 />
             )}
-            <Navigation 
-                activeView={currentCase ? 'dashboard' : activeView} 
-                setActiveView={(v) => { setCurrentCase(null); setActiveView(v); }} 
-                onLogout={handleLogout} 
-                t={t} 
+            <Navigation
+                activeView={currentCase ? 'dashboard' : activeView}
+                setActiveView={(v) => { setCurrentCase(null); setActiveView(v); }}
+                onLogout={handleLogout}
+                t={t}
             />
             <div className="flex-1 pl-20 overflow-y-auto">
                 <div className="p-6 sm:p-8 max-w-7xl mx-auto">
-                   <Header 
-                        title={t(`view_${currentCase ? activeCaseView : activeView}_title`)} 
-                        description={t('app_subtitle')} 
-                        icon={<DashboardIcon />} 
-                        theme={theme} 
-                        toggleTheme={toggleTheme} 
-                        language={language} 
-                        setLanguage={setLanguage} 
-                        deviceId="AD-2025" 
+                    <Header
+                        title={t(`view_${currentCase ? activeCaseView : activeView}_title`)}
+                        description={t('app_subtitle')}
+                        icon={<DashboardIcon />}
+                        theme={theme}
+                        toggleTheme={toggleTheme}
+                        language={language}
+                        setLanguage={setLanguage}
+                        deviceId="AD-2025"
                         balance={userBalance}
-                        t={t} 
+                        t={t}
                     />
-                   {currentCase && (
+                    {currentCase && (
                         <div className="animate-assemble-in">
                             <CaseNavigation activeView={activeCaseView} setActiveView={setActiveCaseView} caseData={currentCase} t={t} />
                         </div>
-                   )}
-                   <div className="mt-8">{renderActiveView()}</div>
+                    )}
+                    <div className="mt-8">{renderActiveView()}</div>
                 </div>
             </div>
         </main>

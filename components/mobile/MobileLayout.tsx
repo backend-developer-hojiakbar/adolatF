@@ -6,6 +6,17 @@ import { DocumentScanner } from './DocumentScanner';
 import { DocumentList } from './DocumentList';
 import { MicrophoneIcon, CameraIcon, LogoutIcon, ChatBubbleLeftRightIcon, CurrencyDollarIcon, DocumentTextIcon, ExclamationIcon } from '../icons';
 import type { UsageInfo } from '../../types';
+import { api } from '../../services/api';
+
+// Helper to convert dataURL to Blob
+const dataURLtoBlob = (dataurl: string) => {
+    let arr = dataurl.split(','), mime = arr[0].match(/:(.*?);/)?.[1];
+    let bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+    while (n--) {
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    return new Blob([u8arr], { type: mime });
+}
 
 interface MobileLayoutProps {
     t: (key: string) => string;
@@ -17,43 +28,94 @@ interface MobileLayoutProps {
 
 export interface ScannedDoc {
     id: string;
-    pages: string[]; 
+    pages: string[];
     timestamp: string;
     name: string;
 }
 
 export const MobileLayout: React.FC<MobileLayoutProps> = ({ t, language, onLogout, balance, onDeductTokens }) => {
     const [activeTab, setActiveTab] = useState<'voice' | 'chat' | 'scanner' | 'documents'>('voice');
-    
+
     // Global state for scanned documents to sync across tabs
-    const [scannedDocs, setScannedDocs] = useState<ScannedDoc[]>(() => {
-        const saved = localStorage.getItem('adolat_scans_v5');
-        return saved ? JSON.parse(saved) : [];
-    });
+    const [scannedDocs, setScannedDocs] = useState<ScannedDoc[]>([]);
 
     useEffect(() => {
-        localStorage.setItem('adolat_scans_v5', JSON.stringify(scannedDocs));
-    }, [scannedDocs]);
+        // Load documents from backend
+        api.getDocuments().then(docs => {
+            const mapped = docs.map((d: any) => {
+                // Ensure absolute URL
+                const fileUrl = d.file.startsWith('http') ? d.file : `http://localhost:8000${d.file}`;
+                return {
+                    id: d.id.toString(),
+                    name: d.name,
+                    pages: [fileUrl],
+                    timestamp: d.uploaded_at
+                };
+            });
+            setScannedDocs(mapped);
+        }).catch(err => console.error("Failed to load documents", err));
+    }, []);
+
+    const handleSaveDoc = async (newDoc: ScannedDoc) => {
+        try {
+            // 1. Create PDF from pages (if multiple) or use image (if single)
+            let fileToUpload: File;
+
+            if (window.jspdf) {
+                const doc = new window.jspdf.jsPDF();
+                newDoc.pages.forEach((page, index) => {
+                    const imgProps = doc.getImageProperties(page);
+                    const pdfWidth = doc.internal.pageSize.getWidth();
+                    const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    if (index > 0) doc.addPage();
+                    doc.addImage(page, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+                });
+                const blob = doc.output('blob');
+                fileToUpload = new File([blob], `${newDoc.name}.pdf`, { type: 'application/pdf' });
+            } else {
+                // Fallback: upload first page as image
+                const blob = dataURLtoBlob(newDoc.pages[0]);
+                fileToUpload = new File([blob], `${newDoc.name}.jpg`, { type: 'image/jpeg' });
+            }
+
+            // 2. Upload to Backend
+            const savedDoc = await api.uploadDocument(fileToUpload, newDoc.name, 'scan');
+
+            // 3. Update State (using the returned data/file url)
+            const savedFileUrl = savedDoc.file.startsWith('http') ? savedDoc.file : `http://localhost:8000${savedDoc.file}`;
+            setScannedDocs(prev => [{
+                id: savedDoc.id.toString(),
+                name: savedDoc.name,
+                pages: [savedFileUrl],
+                timestamp: savedDoc.uploaded_at
+            }, ...prev]);
+
+            setActiveTab('documents');
+        } catch (e) {
+            console.error("Failed to upload document", e);
+            alert("Hujjat saqlashda xatolik yuz berdi");
+        }
+    };
 
     // Shared state for transferring scanned documents between components
-    const [sharedDoc, setSharedDoc] = useState<{pages: string[], name: string} | null>(null);
+    const [sharedDoc, setSharedDoc] = useState<{ pages: string[], name: string } | null>(null);
 
-    const handleSendToChat = (doc: {pages: string[], name: string}) => {
+    const handleSendToChat = (doc: { pages: string[], name: string }) => {
         setSharedDoc(doc);
         setActiveTab('chat');
     };
 
-    const handleSendToVoice = (doc: {pages: string[], name: string}) => {
+    const handleSendToVoice = (doc: { pages: string[], name: string }) => {
         setSharedDoc(doc);
         setActiveTab('voice');
     };
 
     const isBalanceEmpty = balance <= 0;
-    
+
     // Format balance to 1 499 093.79 style
-    const formattedBalance = balance.toLocaleString('ru-RU', { 
-        minimumFractionDigits: 2, 
-        maximumFractionDigits: 2 
+    const formattedBalance = balance.toLocaleString('ru-RU', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
     }).replace(',', '.');
 
     return (
@@ -94,39 +156,39 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ t, language, onLogou
                 ) : (
                     <>
                         {activeTab === 'voice' && (
-                            <VoiceExpert 
-                                t={t} 
-                                language={language} 
-                                incomingDoc={sharedDoc} 
-                                onDocProcessed={() => setSharedDoc(null)} 
+                            <VoiceExpert
+                                t={t}
+                                language={language}
+                                incomingDoc={sharedDoc}
+                                onDocProcessed={() => setSharedDoc(null)}
                                 onDeductTokens={onDeductTokens}
                                 disabled={isBalanceEmpty}
                             />
                         )}
                         {activeTab === 'chat' && (
-                            <TextChat 
-                                t={t} 
-                                language={language} 
-                                incomingDoc={sharedDoc} 
-                                onDocProcessed={() => setSharedDoc(null)} 
+                            <TextChat
+                                t={t}
+                                language={language}
+                                incomingDoc={sharedDoc}
+                                onDocProcessed={() => setSharedDoc(null)}
                                 onDeductTokens={onDeductTokens}
                                 disabled={isBalanceEmpty}
                             />
                         )}
                         {activeTab === 'scanner' && (
-                            <DocumentScanner 
-                                t={t} 
-                                onSave={(newDoc) => {
-                                    setScannedDocs(prev => [newDoc, ...prev]);
-                                    setActiveTab('documents');
-                                }}
+                            <DocumentScanner
+                                t={t}
+                                onSave={handleSaveDoc}
                             />
                         )}
                         {activeTab === 'documents' && (
-                            <DocumentList 
+                            <DocumentList
                                 t={t}
                                 documents={scannedDocs}
-                                onDelete={(id) => setScannedDocs(prev => prev.filter(d => d.id !== id))}
+                                onDelete={(id) => {
+                                    api.deleteDocument(id).catch(err => console.error("Failed to delete", err));
+                                    setScannedDocs(prev => prev.filter(d => d.id !== id));
+                                }}
                                 onSendToChat={handleSendToChat}
                                 onSendToVoice={handleSendToVoice}
                                 onAddClick={() => setActiveTab('scanner')}
@@ -138,29 +200,29 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ t, language, onLogou
 
             <nav className="px-4 mb-6 z-10">
                 <div className="bg-slate-900/80 backdrop-blur-2xl border border-white/10 rounded-3xl p-2 flex items-center justify-around shadow-2xl max-w-sm mx-auto">
-                    <TabButton 
-                        icon={<MicrophoneIcon />} 
-                        label={t('nav_voice_expert')} 
-                        isActive={activeTab === 'voice'} 
-                        onClick={() => setActiveTab('voice')} 
+                    <TabButton
+                        icon={<MicrophoneIcon />}
+                        label={t('nav_voice_expert')}
+                        isActive={activeTab === 'voice'}
+                        onClick={() => setActiveTab('voice')}
                     />
-                    <TabButton 
-                        icon={<ChatBubbleLeftRightIcon />} 
-                        label={t('nav_text_chat')} 
-                        isActive={activeTab === 'chat'} 
-                        onClick={() => setActiveTab('chat')} 
+                    <TabButton
+                        icon={<ChatBubbleLeftRightIcon />}
+                        label={t('nav_text_chat')}
+                        isActive={activeTab === 'chat'}
+                        onClick={() => setActiveTab('chat')}
                     />
-                    <TabButton 
-                        icon={<CameraIcon />} 
-                        label={t('nav_scanner')} 
-                        isActive={activeTab === 'scanner'} 
-                        onClick={() => setActiveTab('scanner')} 
+                    <TabButton
+                        icon={<CameraIcon />}
+                        label={t('nav_scanner')}
+                        isActive={activeTab === 'scanner'}
+                        onClick={() => setActiveTab('scanner')}
                     />
-                    <TabButton 
-                        icon={<DocumentTextIcon />} 
-                        label={t('nav_mobile_documents')} 
-                        isActive={activeTab === 'documents'} 
-                        onClick={() => setActiveTab('documents')} 
+                    <TabButton
+                        icon={<DocumentTextIcon />}
+                        label={t('nav_mobile_documents')}
+                        isActive={activeTab === 'documents'}
+                        onClick={() => setActiveTab('documents')}
                     />
                 </div>
             </nav>

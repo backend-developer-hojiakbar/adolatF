@@ -43,9 +43,9 @@ export const LogoutIcon: React.FC<IconProps> = ({ className }) => (
     </svg>
 );
 export const ScaleIcon: React.FC<IconProps> = ({ className }) => (
-  <svg {...defaultProps} className={className || defaultProps.className}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m-3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.153.24c-1.119 0-2.235-.34-3.218-.99-1.396-.92-2.936-2.033-4.483-3.286" />
-  </svg>
+    <svg {...defaultProps} className={className || defaultProps.className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v17.25m0 0c-1.472 0-2.882.265-4.185.75M12 20.25c1.472 0 2.882.265 4.185.75M18.75 4.97A48.416 48.416 0 0012 4.5c-2.291 0-4.545.16-6.75.47m13.5 0c1.01.143 2.01.317 3 .52m-3-.52l2.62 10.726c.122.499-.106 1.028-.589 1.202a5.988 5.988 0 01-2.153.24c-1.119 0-2.235-.34-3.218-.99-1.396-.92-2.936-2.033-4.483-3.286" />
+    </svg>
 );
 export const MicrophoneIcon: React.FC<IconProps> = ({ className }) => (
     <svg {...defaultProps} className={className || defaultProps.className}>
@@ -245,6 +245,11 @@ export const TheaterIcon: React.FC<IconProps> = ({ className }) => (
         <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-19.5 0A2.25 2.25 0 004.5 15h15a2.25 2.25 0 002.25-2.25m-19.5 0v.75A2.25 2.25 0 004.5 18h15a2.25 2.25 0 002.25-2.25V12.75M12 3v3.75m0 0H8.25m3.75 0H15.75" />
     </svg>
 );
+export const ArrowPathIcon: React.FC<IconProps> = ({ className }) => (
+    <svg {...defaultProps} className={className || defaultProps.className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+    </svg>
+);
 export const ArrowsRightLeftIcon: React.FC<IconProps> = ({ className }) => (
     <svg {...defaultProps} className={className || defaultProps.className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
@@ -278,5 +283,27 @@ export const PencilSquareIcon: React.FC<IconProps> = ({ className }) => (
 export const PlusIcon: React.FC<IconProps> = ({ className }) => (
     <svg {...defaultProps} className={className || defaultProps.className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+    </svg>
+);
+
+export const MagicWandIcon: React.FC<IconProps> = ({ className }) => (
+    <svg {...defaultProps} className={className || defaultProps.className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+    </svg>
+);
+export const CropIcon: React.FC<IconProps> = ({ className }) => (
+    <svg {...defaultProps} className={className || defaultProps.className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3v3m-3-12H5.25m14.25 3.75h3M2.25 21.75h19.5" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5v-7.5a2.25 2.25 0 00-2.25-2.25h-7.5" />
+    </svg>
+);
+export const TextScanIcon: React.FC<IconProps> = ({ className }) => (
+    <svg {...defaultProps} className={className || defaultProps.className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12" />
+    </svg>
+);
+export const ShareIcon: React.FC<IconProps> = ({ className }) => (
+    <svg {...defaultProps} className={className || defaultProps.className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z" />
     </svg>
 );
