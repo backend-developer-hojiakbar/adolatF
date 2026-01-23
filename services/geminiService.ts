@@ -286,7 +286,7 @@ export const analyzeLargeDocumentServer = async (file: File): Promise<string> =>
 
     try {
         // In production, use env variable VITE_API_URL
-        const response = await fetch('http://localhost:8000/api/analyze-pdf/', {
+        const response = await fetch('https://advokatapi.aiproduct.uz/api/analyze-pdf/', {
             method: 'POST',
             body: formData,
         });

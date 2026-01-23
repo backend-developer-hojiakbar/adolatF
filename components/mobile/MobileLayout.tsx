@@ -44,7 +44,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ t, language, onLogou
         api.getDocuments().then(docs => {
             const mapped = docs.map((d: any) => {
                 // Ensure absolute URL
-                const fileUrl = d.file.startsWith('http') ? d.file : `http://localhost:8000${d.file}`;
+                const fileUrl = d.file.startsWith('http') ? d.file : `https://advokatapi.aiproduct.uz${d.file}`;
                 return {
                     id: d.id.toString(),
                     name: d.name,
@@ -82,7 +82,7 @@ export const MobileLayout: React.FC<MobileLayoutProps> = ({ t, language, onLogou
             const savedDoc = await api.uploadDocument(fileToUpload, newDoc.name, 'scan');
 
             // 3. Update State (using the returned data/file url)
-            const savedFileUrl = savedDoc.file.startsWith('http') ? savedDoc.file : `http://localhost:8000${savedDoc.file}`;
+            const savedFileUrl = savedDoc.file.startsWith('http') ? savedDoc.file : `https://advokatapi.aiproduct.uz${savedDoc.file}`;
             setScannedDocs(prev => [{
                 id: savedDoc.id.toString(),
                 name: savedDoc.name,

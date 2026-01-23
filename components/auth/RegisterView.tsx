@@ -25,7 +25,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onLoginClick, onRegi
         setLoading(true);
         try {
             // 1. Register
-            const res = await fetch('http://localhost:8000/api/auth/register/', {
+            const res = await fetch('https://advokatapi.aiproduct.uz/api/auth/register/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -41,7 +41,7 @@ export const RegisterView: React.FC<RegisterViewProps> = ({ onLoginClick, onRegi
             }
 
             // 2. Auto Login (get token)
-            const loginRes = await fetch('http://localhost:8000/api/auth/login/', {
+            const loginRes = await fetch('https://advokatapi.aiproduct.uz/api/auth/login/', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
