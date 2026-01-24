@@ -265,36 +265,108 @@ export const DocumentScanner: React.FC<DocumentScannerProps> = ({ t, onSave }) =
     };
 
     const processPage = async () => {
-        if (!capturedImage || !window.cv) return;
+        if (!capturedImage || !window.cv || !containerRef.current) return;
         setMode('processing');
 
+        const containerRect = containerRef.current.getBoundingClientRect();
         const img = new Image();
         img.src = capturedImage;
+
         img.onload = () => {
             const cv = window.cv;
             let src = cv.imread(img);
             let dst = new cv.Mat();
+
+            // 1. Calculate how the image is actually rendered (object-contain logic)
+            const naturalRatio = img.width / img.height;
+            const containerRatio = containerRect.width / containerRect.height;
+
+            let renderW, renderH, offsetX, offsetY;
+
+            if (naturalRatio > containerRatio) {
+                // Image is wider relative to its height than the container (e.g., landscape image in portrait container)
+                // Image will span full container width, letterboxed vertically
+                renderW = containerRect.width;
+                renderH = renderW / naturalRatio;
+                offsetX = 0;
+                offsetY = (containerRect.height - renderH) / 2;
+            } else {
+                // Image is taller relative to its width than the container, or aspect ratios match
+                // Image will span full container height, letterboxed horizontally
+                renderH = containerRect.height;
+                renderW = renderH * naturalRatio;
+                offsetY = 0;
+                offsetX = (containerRect.width - renderW) / 2;
+            }
+
+            // 2. Map stored percentage points (0-100 relative to CONTAINER) to Image Natural Coordinates
+            const mapCoord = (pt: Point) => {
+                // Convert % to container px
+                const containerX = (pt.x / 100) * containerRect.width;
+                const containerY = (pt.y / 100) * containerRect.height;
+
+                // Remove offsets (letterboxing) to get coordinates relative to the rendered image content
+                const imgRenderX = containerX - offsetX;
+                const imgRenderY = containerY - offsetY;
+
+                // Normalize 0-1 relative to image render size
+                // Clamp to ensure we don't go outside image data (e.g., if a point is dragged into the letterbox area)
+                const normX = Math.max(0, Math.min(1, imgRenderX / renderW));
+                const normY = Math.max(0, Math.min(1, imgRenderY / renderH));
+
+                // Scale to natural size of the image
+                return {
+                    x: normX * img.width,
+                    y: normY * img.height
+                };
+            };
+
+            const p0 = mapCoord(cropPoints[0]);
+            const p1 = mapCoord(cropPoints[1]);
+            const p2 = mapCoord(cropPoints[2]);
+            const p3 = mapCoord(cropPoints[3]);
+
             const srcCoords = cv.matFromArray(4, 1, cv.CV_32FC2, [
-                cropPoints[0].x * img.width / 100, cropPoints[0].y * img.height / 100,
-                cropPoints[1].x * img.width / 100, cropPoints[1].y * img.height / 100,
-                cropPoints[2].x * img.width / 100, cropPoints[2].y * img.height / 100,
-                cropPoints[3].x * img.width / 100, cropPoints[3].y * img.height / 100
+                p0.x, p0.y,
+                p1.x, p1.y,
+                p2.x, p2.y,
+                p3.x, p3.y
             ]);
-            const w1 = Math.hypot(cropPoints[1].x - cropPoints[0].x, cropPoints[1].y - cropPoints[0].y) * img.width / 100;
-            const w2 = Math.hypot(cropPoints[2].x - cropPoints[3].x, cropPoints[2].y - cropPoints[3].y) * img.width / 100;
+
+            // Calculate target width/height based on mapped coordinates
+            const w1 = Math.hypot(p1.x - p0.x, p1.y - p0.y);
+            const w2 = Math.hypot(p2.x - p3.x, p2.y - p3.y);
             const targetWidth = Math.max(w1, w2);
-            const h1 = Math.hypot(cropPoints[3].x - cropPoints[0].x, cropPoints[3].y - cropPoints[0].y) * img.height / 100;
-            const h2 = Math.hypot(cropPoints[2].x - cropPoints[1].x, cropPoints[2].y - cropPoints[1].y) * img.height / 100;
+
+            const h1 = Math.hypot(p3.x - p0.x, p3.y - p0.y);
+            const h2 = Math.hypot(p2.x - p1.x, p2.y - p1.y);
             const targetHeight = Math.max(h1, h2);
+
             const dstCoords = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, targetWidth, 0, targetWidth, targetHeight, 0, targetHeight]);
+
             let M = cv.getPerspectiveTransform(srcCoords, dstCoords);
             cv.warpPerspective(src, dst, M, new cv.Size(targetWidth, targetHeight), cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+            // --- AUTOMATIC SHARPENING (Tiniqlashtirish) ---
+            // Create a blurred version
+            let blurred = new cv.Mat();
+            let ksize = new cv.Size(0, 0); // let sigma decide
+            cv.GaussianBlur(dst, blurred, ksize, 3); // Sigma=3 for moderate blur
+
+            // Unsharp Mask: src * (1 + amount) - blurred * amount
+            // Formula: addWeighted(src, alpha, blurred, beta, gamma, dst)
+            // alpha = 1.5, beta = -0.5  =>  1.5*src - 0.5*blurred = src + 0.5*(src - blurred)
+            cv.addWeighted(dst, 1.5, blurred, -0.5, 0, dst);
+
+            blurred.delete();
+            // ----------------------------------------------
+
             const outCanvas = document.createElement('canvas');
             cv.imshow(outCanvas, dst);
             const finalDataUrl = outCanvas.toDataURL('image/jpeg', 0.9);
 
             setCapturedImage(finalDataUrl);
-            setMode('filter'); // Go to filter mode
+            setMode('filter');
 
             src.delete(); dst.delete(); M.delete(); srcCoords.delete(); dstCoords.delete();
             if (window.navigator.vibrate) window.navigator.vibrate(50);

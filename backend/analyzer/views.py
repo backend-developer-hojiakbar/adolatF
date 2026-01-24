@@ -11,7 +11,7 @@ from .models import Case, UserProfile, Document, Transaction
 from .serializers import CaseSerializer, UserProfileSerializer, DocumentSerializer, TransactionSerializer
 
 # Configure Gemini with API key from environment
-api_key = "AIzaSyCiC9hPnAEEURLn7qedmSL3jIVwiE2ZiPY"
+api_key = "AIzaSyA6zHJTMEn0wHVsCq3KX64g8k4lZ_lS9NY"
 if api_key:
     genai.configure(api_key=api_key)
 
